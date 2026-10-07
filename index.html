@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suruchi Food Order</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx-js-style/1.2.0/xlsx.bundle.js"
+  onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';document.head.appendChild(s);"></script>
+<style>
+:root{
+  --title-bg:#9FD3FF; --title-fg:#0b2a4a;
+  --date-bg:#C6EFCE; --date-fg:#006100;
+  --bar:#FFFF00; --blank:#FFC7CE;
+  --ink:#1b1b1b; --line:#333; --paper:#fff; --page:#f2f2f2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--ink);font-family:Calibri,"Segoe UI",Roboto,Arial,sans-serif;font-size:18px;overflow-x:hidden}
+.top{position:sticky;top:0;z-index:10}
+.title{background:var(--title-bg);padding:8px}
+.title input{width:100%;background:transparent;border:0;color:var(--title-fg);font:700 30px/1.2 inherit;font-family:inherit;text-align:center;text-transform:uppercase;min-height:52px}
+.datebar{background:var(--date-bg);color:var(--date-fg);display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:8px;font-weight:700;border-bottom:2px solid var(--line)}
+.datebar input{font:inherit;color:var(--date-fg);background:#fff;border:1px solid var(--date-fg);border-radius:6px;min-height:44px;padding:4px 8px}
+.datebar .shown{min-width:92px;text-align:center}
+.oid{display:flex;align-items:center;gap:6px}
+.oid input{width:150px}
+.status{font-size:13px;padding:2px 8px;border-radius:10px;background:#fff}
+main{max-width:760px;margin:0 auto;padding:8px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+button{font:inherit;min-height:44px;padding:6px 14px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer;touch-action:manipulation}
+button.primary{background:var(--date-bg);color:var(--date-fg);font-weight:700}
+button.add{background:#fffbe0;width:100%;margin-top:6px}
+button.x{min-height:40px;width:40px;padding:0;color:#b00020;font-weight:700}
+.sec{background:var(--paper);border:2px solid var(--line);margin-bottom:14px}
+.bar{background:var(--bar);display:grid;grid-template-columns:1fr 46px 40px;gap:4px;padding:4px;border-bottom:2px solid var(--line)}
+.bar input{background:transparent;border:0;font:700 22px inherit;font-family:inherit;text-align:center;min-height:42px;width:100%}
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.7fr) minmax(0,.8fr) minmax(0,.8fr) 40px;gap:0}
+.grid>*{border-bottom:1px solid #999;border-right:1px solid #999;min-width:0}
+.hd{background:#e8e8e8;font-weight:700;font-size:14px;padding:8px 4px;text-align:center}
+.grid input{width:100%;border:0;border-radius:0;padding:8px 5px;min-height:48px;font:18px inherit;font-family:inherit;background:transparent}
+.grid input:focus,.bar input:focus,.title input:focus{outline:3px solid #ff9800;outline-offset:-3px;background:#fffde7}
+.grid button.x{border:0;border-radius:0;width:100%;background:transparent}
+.pink input{background:var(--blank)}
+.grid input.prev{color:#777;font-style:italic}
+.bar input[type=color]{width:46px;min-height:42px;padding:0;border:1px solid #666;border-radius:6px;background:#fff}
+.tot{display:flex;justify-content:space-between;background:#fff2cc;font-weight:700;padding:8px 10px;border-top:2px solid var(--line)}
+.grand{background:var(--date-bg);color:var(--date-fg);font-size:18px;border:2px solid var(--line);display:flex;justify-content:space-between;padding:12px;font-weight:700;margin-bottom:14px}
+.pad{padding:6px}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:20;max-width:90%}
+#toast.on{opacity:1}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="title"><input id="title" aria-label="Title" data-k="title"></div>
+  <div class="datebar">
+    <span>FOOD ORDER FOR Date :-</span>
+    <input type="date" id="date" aria-label="Order date">
+    <span class="shown" id="shown"></span>
+    <span class="oid">Order ID <input type="text" id="oid" aria-label="Order ID" style="color:inherit"></span>
+    <span class="status" id="status"></span>
+  </div>
+</div>
+<main>
+  <div class="toolbar">
+    <button class="primary" id="save">Submit / Save</button>
+    <button id="xd">Export Excel (day)</button>
+    <button id="xm">Export Excel (month)</button>
+    <button id="bk">Backup</button>
+    <button id="rs">Restore</button>
+    <input type="file" id="file" accept="application/json,.json">
+  </div>
+  <div id="sections"></div>
+  <button class="add" id="addSec">+ Add Section</button>
+  <div class="grand" style="margin-top:14px"><span>GRAND TOTAL (UOM KG)</span><span id="grand">0</span></div>
+</main>
+<div id="toast"></div>
+
+<script>
+const KEY = 'suruchi_food_orders_v1';
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const fmt = s => { const [y, m, d] = s.split('-'); return d + '/' + m + '/' + y; };
+const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); return iso(d); };
+const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const R = (cat, dish, pax, uom) => ({ cat, dish, pax: String(pax), uom: String(uom) });
+const blank = () => R('', '', '', '');
+
+function defaults() {
+  return [
+    { title: 'BREAKFAST', rows: [
+      R('BREAKFAST','Pongal',50,5), R('BREAKFAST','Sambhar',500,60), R('BREAKFAST','Chutney',150,15),
+      R('BREAKFAST','Dosa Batter',500,50), R('BREAKFAST','Idli Batter',500,50), R('BREAKFAST','Dosa Masala',50,5),
+      R('BREAKFAST','Samosa',200,200), R('BREAKFAST','Kachori',150,150), R('BREAKFAST','Dokala',50,50), blank()] },
+    { title: 'LUNCH', rows: [
+      R('LUNCH','Urad Chana Dal',150,15), R('LUNCH','Aloo Vepedu',100,10), R('LUNCH','White Rice',50,10),
+      R('LUNCH','Curd Rice',75,15), R('LUNCH','Tori Mutter',70,10), R('LUNCH','Vegetable Biryani',70,10),
+      R('LUNCH','Rajma Masala',100,10), R('LUNCH','Kerala Sambar',150,15)] },
+    { title: 'Rainbow', rows: [
+      ['Kadai Paneer',3],['Blinding Fry',3],['Dal Palak',2],['Raita',3],['Green Salad',1],['Veg Biryani',3],['Curd Rice',1]
+    ].map(a => R('LUNCH', a[0], 'Kg', a[1])) },
+    { title: 'STAFF FOOD', rows: [['Dal',3],['Sabji',3],['Rice',3],['Buttermilk',2],['Chutney',1]]
+      .map(a => R('STAFF LUNCH', a[0], 'Kg', a[1])) },
+    { title: 'DINNER', rows: [
+      R('DINNER','Rice',60,10), R('DINNER','Sabji North',50,5), R('DINNER','Sambar',150,15), R('DINNER','Chutney',100,5)] },
+    { title: 'STAFF FOOD', rows: [['Dal as per central kitchen',2],['Sabji',2],['Rice',2],['Chutney',1]]
+      .map(a => R('STAFF DINNER', a[0], 'Kg', a[1])) },
+    { title: '', pink: true, rows: [blank()] }
+  ];
+}
+
+let state, dirty = false;
+
+function colorFor(s) {
+  if (s.color) return s.color;
+  const t = (s.title + ' ' + (s.rows[0] ? s.rows[0].cat : '')).toUpperCase();
+  if (t.includes('STAFF') && t.includes('DINNER')) return '#CFD8DC';
+  if (t.includes('STAFF')) return '#E1BEE7';
+  if (t.includes('BREAKFAST')) return '#FFE0B2';
+  if (t.includes('DINNER')) return '#B2DFDB';
+  if (t.includes('RAINBOW')) return '#E6EE9C';
+  if (t.includes('LUNCH')) return '#C8E6C9';
+  return '#FFF59D';
+}
+function tint(h) {
+  const n = parseInt(h.slice(1), 16);
+  const m = c => Math.round(c + (255 - c) * 0.6).toString(16).padStart(2, '0');
+  return '#' + m(n >> 16) + m((n >> 8) & 255) + m(n & 255);
+}
+
+function newState(date, title) {
+  return { title: title || 'SURUCHI FOOD ORDER', date, orderId: 'ORD-' + date.replace(/-/g, ''), sections: defaults() };
+}
+function readStore() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
+function writeStore(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); return true; } catch (e) { return false; } }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2200); }
+
+function loadDate(date) {
+  const store = readStore(), saved = store[date];
+  if (saved) state = JSON.parse(JSON.stringify(saved));
+  else {
+    state = newState(date, state && state.title);
+    const keys = Object.keys(store).sort(), before = keys.filter(k => k < date);
+    const k = before.length ? before[before.length - 1] : keys[keys.length - 1];
+    if (k) {
+      const src = store[k];
+      state.sections = JSON.parse(JSON.stringify(src.sections));
+      state.sections.forEach(s => s.rows.forEach(r => { r.p = { cat: 1, dish: 1, pax: 1, uom: 1 }; }));
+      state.title = src.title || state.title; state.from = k;
+    }
+  }
+  state.date = date; dirty = false; render();
+  if (state.from) toast('Order of ' + fmt(state.from) + ' loaded - just start typing to replace a value');
+}
+
+function num(v) { const n = parseFloat(String(v).replace(/,/g, '')); return isFinite(n) && /^\s*-?[\d.,]+\s*$/.test(String(v)) ? n : 0; }
+const secTotal = s => s.rows.reduce((a, r) => a + num(r.uom), 0);
+const grandTotal = d => d.sections.reduce((a, s) => a + secTotal(s), 0);
+const round = n => Math.round(n * 100) / 100;
+
+function render() {
+  $('#title').value = state.title;
+  $('#date').value = state.date;
+  $('#shown').textContent = fmt(state.date);
+  $('#oid').value = state.orderId;
+  $('#sections').innerHTML = state.sections.map((s, i) => {
+    const col = s.pink ? '' : colorFor(s), bg = s.pink ? '' : tint(col);
+    const head = s.pink ? '' :
+      `<div class="bar" style="background:${col}"><input data-s="${i}" data-f="title" value="${esc(s.title)}" aria-label="Section title"><input type="color" data-s="${i}" data-f="color" value="${col}" aria-label="Session colour"><button class="x" data-act="delSec" data-s="${i}" aria-label="Delete section">✕</button></div>`;
+    const hdr = `<div class="hd">Meal Category</div><div class="hd">Dish</div><div class="hd">PAX</div><div class="hd">UOM KG</div><div class="hd"></div>`;
+    const rows = s.rows.map((r, j) => ['cat','dish','pax','uom'].map(f =>
+      `<div${s.pink ? ' class="pink"' : ` style="background:${bg}"`}><input${r.p && r.p[f] ? ' class="prev"' : ''} data-s="${i}" data-r="${j}" data-f="${f}" value="${esc(r[f])}" aria-label="${f}"></div>`
+    ).join('') + `<div><button class="x" data-act="delRow" data-s="${i}" data-r="${j}" aria-label="Delete row">✕</button></div>`).join('');
+    return `<section class="sec"${s.pink ? ' style="background:var(--blank)"' : ''}>${head}<div class="grid">${hdr}${rows}</div>
+      ${s.pink ? '' : `<div class="tot"><span>Total UOM KG</span><span id="t${i}">${round(secTotal(s))}</span></div>`}
+      <div class="pad"><button class="add" style="margin:0" data-act="addRow" data-s="${i}">+ Add Row</button></div></section>`;
+  }).join('');
+  totals(); setStatus();
+}
+function totals() {
+  state.sections.forEach((s, i) => { const e = $('#t' + i); if (e) e.textContent = round(secTotal(s)); });
+  $('#grand').textContent = round(grandTotal(state));
+}
+function setStatus() {
+  const saved = !!readStore()[state.date];
+  $('#status').textContent = dirty ? 'Unsaved changes' : saved ? 'Saved' : state.from ? 'Copied from ' + fmt(state.from) : 'Not saved';
+}
+
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'title') state.title = t.value;
+  else if (t.id === 'oid') state.orderId = t.value;
+  else if (t.dataset.f) {
+    const s = state.sections[+t.dataset.s];
+    if (t.dataset.r !== undefined) {
+      const row = s.rows[+t.dataset.r]; row[t.dataset.f] = t.value;
+      if (row.p) { delete row.p[t.dataset.f]; t.classList.remove('prev'); }
+    } else s[t.dataset.f] = t.value;
+    if (t.dataset.f === 'color') { dirty = true; render(); return; }
+  } else return;
+  dirty = true; totals(); setStatus();
+});
+document.addEventListener('focusin', e => {
+  if (e.target.classList && e.target.classList.contains('prev')) setTimeout(() => e.target.select(), 0);
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const i = +b.dataset.s, j = +b.dataset.r, a = b.dataset.act;
+  if (a === 'addRow') state.sections[i].rows.push(blank());
+  else if (a === 'delRow') state.sections[i].rows.splice(j, 1);
+  else if (a === 'delSec') { if (!confirm('Delete this whole section?')) return; state.sections.splice(i, 1); }
+  dirty = true; render();
+});
+$('#addSec').onclick = () => {
+  const pinkAt = state.sections.findIndex(s => s.pink);
+  const sec = { title: 'NEW SECTION', color: '#FFF59D', rows: [blank()] };
+  if (pinkAt < 0) state.sections.push(sec); else state.sections.splice(pinkAt, 0, sec);
+  dirty = true; render();
+};
+$('#date').onchange = e => {
+  const v = e.target.value; if (!v) { e.target.value = state.date; return; }
+  if (dirty && !confirm('Discard unsaved changes for ' + fmt(state.date) + '?')) { e.target.value = state.date; return; }
+  loadDate(v);
+};
+$('#save').onclick = () => {
+  if (!state.orderId.trim()) state.orderId = 'ORD-' + state.date.replace(/-/g, '');
+  state.sections.forEach(s => s.rows.forEach(r => delete r.p)); delete state.from;
+  const store = readStore();
+  store[state.date] = Object.assign(JSON.parse(JSON.stringify(state)), { savedAt: new Date().toISOString() });
+  if (writeStore(store)) { dirty = false; render(); toast('Saved for ' + fmt(state.date)); }
+  else toast('Could not save - browser storage is blocked or full');
+};
+
+/* ---------- Excel ---------- */
+function xlsxReady() { if (typeof XLSX === 'undefined' || !XLSX.utils) { toast('Excel library not loaded - check internet and retry'); return false; } return true; }
+const B = { style: 'thin', color: { rgb: '000000' } };
+const BORDER = { top: B, bottom: B, left: B, right: B };
+function cell(v, fill, color, bold, al, sz) {
+  const isNum = typeof v === 'number';
+  return { v: v, t: isNum ? 'n' : 's', s: { fill: { patternType: 'solid', fgColor: { rgb: fill } }, font: { color: { rgb: color }, bold: !!bold, sz: sz || 12 }, border: BORDER, alignment: { horizontal: al || 'left', vertical: 'center', wrapText: true } } };
+}
+const val = v => { const s = String(v ?? '').trim(); return s !== '' && /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s; };
+function buildSheet(d) {
+  const ws = {}, merges = []; let r = 0;
+  const put = (c, v) => { ws[XLSX.utils.encode_cell({ r, c })] = v; };
+  const full = (text, fill, color, bold, al, sz) => { for (let c = 0; c < 4; c++) put(c, cell(c ? '' : text, fill, color, bold, al, sz)); merges.push({ s: { r, c: 0 }, e: { r, c: 3 } }); r++; };
+  full(d.title, '9FD3FF', '0B2A4A', true, 'center', 20);
+  full('FOOD ORDER FOR Date :- ' + fmt(d.date), 'C6EFCE', '006100', true, 'center', 14);
+  d.sections.forEach(s => {
+    const hx = s.pink ? 'FFC7CE' : colorFor(s).slice(1).toUpperCase(), rx = s.pink ? 'FFC7CE' : tint(colorFor(s)).slice(1).toUpperCase();
+    if (!s.pink) full(s.title, hx, '000000', true, 'center', 14);
+    ['Meal Category', 'Dish', 'PAX', 'UOM KG'].forEach((h, c) => put(c, cell(h, 'E8E8E8', '000000', true, 'center'))); r++;
+    s.rows.forEach(row => {
+      const fill = rx;
+      [row.cat, row.dish, row.pax, row.uom].forEach((v, c) => put(c, cell(val(v), fill, '000000', false, c > 1 ? 'center' : 'left'))); r++;
+    });
+    if (!s.pink) { put(0, cell('Total UOM KG', hx, '000000', true)); put(1, cell('', hx, '000000')); put(2, cell('', hx, '000000')); put(3, cell(round(secTotal(s)), hx, '000000', true, 'center')); r++; }
+  });
+  put(0, cell('GRAND TOTAL', 'C6EFCE', '006100', true)); put(1, cell('', 'C6EFCE', '006100')); put(2, cell('', 'C6EFCE', '006100')); put(3, cell(round(grandTotal(d)), 'C6EFCE', '006100', true, 'center')); r++;
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: 3 } });
+  ws['!merges'] = merges; ws['!rows'] = [{ hpt: 34 }, { hpt: 24 }]; ws['!cols'] = [{ wch: 18 }, { wch: 32 }, { wch: 12 }, { wch: 12 }];
+  return ws;
+}
+$('#xd').onclick = () => {
+  if (!xlsxReady()) return;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildSheet(state), 'Food Order');
+  XLSX.writeFile(wb, 'Suruchi_Food_Order_' + state.date + '.xlsx');
+};
+$('#xm').onclick = () => {
+  if (!xlsxReady()) return;
+  const month = state.date.slice(0, 7), store = readStore();
+  const days = Object.keys(store).filter(k => k.startsWith(month)).sort();
+  if (!days.length) { toast('No saved orders in this month yet - save a day first'); return; }
+  const wb = XLSX.utils.book_new();
+  const sum = {}; let r = 0;
+  const put = (c, v) => { sum[XLSX.utils.encode_cell({ r, c })] = v; };
+  ['Date', 'Order ID', 'Total UOM KG'].forEach((h, c) => put(c, cell(h, 'FFFF00', '000000', true, 'center'))); r++;
+  let all = 0;
+  days.forEach(k => { const t = round(grandTotal(store[k])); all += t; put(0, cell(fmt(k), 'FFFFFF', '000000')); put(1, cell(store[k].orderId || '', 'FFFFFF', '000000')); put(2, cell(t, 'FFFFFF', '000000', false, 'center')); r++; });
+  put(0, cell('MONTH TOTAL', 'C6EFCE', '006100', true)); put(1, cell('', 'C6EFCE', '006100')); put(2, cell(round(all), 'C6EFCE', '006100', true, 'center')); r++;
+  sum['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: 2 } });
+  sum['!cols'] = [{ wch: 14 }, { wch: 20 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, sum, 'Summary');
+  days.forEach(k => XLSX.utils.book_append_sheet(wb, buildSheet(store[k]), fmt(k).replace(/\//g, '-')));
+  XLSX.writeFile(wb, 'Suruchi_Food_Orders_' + month + '.xlsx');
+};
+
+/* ---------- Backup / Restore ---------- */
+$('#bk').onclick = () => {
+  const blob = new Blob([JSON.stringify({ app: 'suruchi-food-order', version: 1, orders: readStore() }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'suruchi_food_order_backup_' + iso(new Date()) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('#rs').onclick = () => $('#file').click();
+$('#file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const data = JSON.parse(rd.result), orders = data.orders || data;
+      if (typeof orders !== 'object' || Array.isArray(orders)) throw 0;
+      const n = Object.keys(orders).length;
+      if (!confirm('Restore ' + n + ' saved order(s)? Orders on the same dates will be replaced.')) return;
+      writeStore(Object.assign(readStore(), orders));
+      loadDate(state.date); toast('Restored ' + n + ' order(s)');
+    } catch (err) { toast('That file is not a valid backup'); }
+  };
+  rd.readAsText(f); e.target.value = '';
+};
+
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+state = newState(tomorrow());
+loadDate(state.date);
+</script>
+
+</body>
+</html>
